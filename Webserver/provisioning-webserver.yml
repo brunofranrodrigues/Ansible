@@ -1,0 +1,113 @@
+---
+- hosts: all
+  handlers:
+     - name: 'restart HTTPD'
+       service:
+         name: httpd
+         state: restarted
+  become: yes
+  tasks:
+    - name: 'Instala os pacotes de dependecias'
+      yum:
+        name:
+          - net-tools
+          - telnet
+          - php
+          - php-mysql
+          - httpd
+          - mariadb-server
+          - mariadb
+          - kernel-devel
+          - glibc.x86_64
+          - libX11.x86_64
+          - libX11-devel.x86_64
+          - dbus-devel.x86_64
+          - dbus-devel.i686
+          - glibc.i686
+          - libgcc.i686
+          - libX11.i686
+        state: latest
+      become: yes
+    - name: 'Ativa o apache'
+      become: true
+      become_user: root
+      shell: systemctl enable httpd
+    - name: 'Sobe apache'
+      become: true
+      become_user: root
+      shell: systemctl start httpd
+    - name: 'Ativa o mariadb'
+      become: true
+      become_user: root
+      shell: systemctl enable mariadb 
+    - name: 'Sobe mariadb'
+      become: true
+      become_user: root
+      shell: systemctl start mariadb 
+    - name: 'Cria o banco do MySQL'
+      become: true
+      become_user: root
+      shell: mysql -u root -e "create database wordpress_db;" 
+    - name: 'Cria o usuario no MySQL'
+      become: true
+      become_user: root
+      shell: mysql -u root -e "CREATE USER 'wordpress_user'@'localhost' IDENTIFIED BY '123456';"  
+    - name: 'Cria o usuario no MySQL'
+      become: true
+      become_user: root
+      shell: mysql -u root -e "GRANT ALL PRIVILEGES ON wordpress_db.* TO 'wordpress_db.'@'localhost';"  
+    - name: 'Baixa o arquivo de instalacao do Wordpress'
+      get_url:
+        url: 'https://wordpress.org/latest.tar.gz'
+        dest: '/tmp/wordpress.tar.gz'
+    - name: 'Descompacta o wordpress'
+      unarchive:
+        src: '/tmp/wordpress.tar.gz'
+        dest: /var/www/
+        remote_src: yes
+      become: yes
+    - name: 'Muda a permissao'
+      become: true
+      become_user: root
+      shell: chown apache.apache -R /var/www/wordpress
+    - name: 'Cria pastas para a conf'
+      become: true
+      become_user: root
+      shell: mkdir /etc/httpd/sites-available /etc/httpd/sites-enabled 
+    - copy:
+        src: '/var/www/wordpress/wp-config-sample.php'
+        dest: '/var/www/wordpress/wp-config.php'
+        remote_src: yes
+      become: yes
+    - name: 'Configura o wp-config com as entradas do banco de dados'     
+      replace:
+        path: '/var/www/wordpress/wp-config.php'
+        regexp: "{{ item.regex }}"
+        replace: "{{ item.value }}"
+        backup: yes
+      with_items:
+        - { regex: 'database_name_here', value: 'wordpress_db'}
+        - { regex: 'username_here', value: 'wordpress_user'}
+        - { regex: 'password_here', value: '123456'}
+      become: yes
+    - name: 'Configura Apache para servir Wordpress'
+      copy:
+        src: '/etc/ansible/files/www.conf'
+        dest: '/etc/httpd/sites-available/www.conf'
+        remote_src: no
+      become: yes
+    - name: 'Configura o httpd com as entradas corretas'     
+      replace:
+        path: '/etc/httpd/conf/httpd.conf'
+        regexp: "{{ item.regex }}"
+        replace: "{{ item.value }}"
+        backup: yes
+      with_items:
+        - { regex: 'conf.d/*.conf', value: 'sites-enabled/*.conf'}
+      become: yes
+    - name: 'Cria pastas para a conf'
+      become: true
+      become_user: root
+      shell: sudo ln -s /etc/httpd/sites-available/www.conf /etc/httpd/sites-enabled/www.conf 
+      notify:
+        - restart HTTPD

@@ -1,0 +1,59 @@
+---
+- hosts: all
+  tasks:
+    - name: 'Instala os pacotes de dependecias'
+      yum:
+        name:
+          - unzip
+          - bzip2
+          - net-tools
+          - telnet
+          - kernel-devel
+          - glibc.x86_64
+          - libX11.x86_64
+          - libX11-devel.x86_64
+          - dbus-devel.x86_64
+          - dbus-devel.i686
+          - glibc.i686
+          - libgcc.i686
+          - libX11.i686
+        state: latest
+      become: yes
+    - name: 'Copia o agente do SEP'
+      copy:
+        src: '/etc/ansible/files/SymantecEndpointProtection-14.3.1169.zip'
+        dest: '/opt/SymantecEndpointProtection-14.3.1169.zip'
+        remote_src: no
+      become: yes
+    - name: 'Cria o diretorio do extract'
+      become: true
+      become_user: root
+      shell: mkdir /opt/SymantecEndpointProtection 
+    - name: 'Descompacta o SEP'
+      unarchive:
+        src: '/opt/SymantecEndpointProtection-14.3.1169.zip'
+        dest: '/opt/SymantecEndpointProtection'
+        remote_src: yes
+      become: yes
+    - name: 'Descompacta o modulo do kernel para o SEP'
+      unarchive:
+        src: '/opt/SymantecEndpointProtection/src/ap-kernelmodule.tar.bz2'
+        dest: '/opt/SymantecEndpointProtection/src/'
+        remote_src: yes
+      become: yes
+    - name: 'Troca a permissão dos arquivos'
+      become: true
+      become_user: root
+      shell: chmod -R 777 /opt/SymantecEndpointProtection/*
+    - name: 'Instala o SEP'
+      become: true
+      become_user: root
+      shell: sudo /opt/SymantecEndpointProtection/install.sh -i 
+    - name: 'Compila modulo do Kernel'
+      become: true
+      become_user: root
+      shell: 'cd /opt/SymantecEndpointProtection/src/ap-kernelmodule-14.3.1169-0100/ && ./build.sh --kernel-dir `ls -d /usr/src/kernels/*`'
+    - name: 'Reload Daemon'
+      become: true
+      become_user: root
+      shell: systemctl daemon-reload 
